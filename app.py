@@ -1,43 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import yfinance as yf
 
 from demo_model import get_universe, optimize_portfolio, compute_efficient_frontier
 
 import plotly.graph_objects as go
 import plotly.express as px
-
-
-# --------------------------------------------------
-# Fonctions pour récupérer les taux sans risque
-# --------------------------------------------------
-@st.cache_data(ttl=3600)
-def get_rate_usd() -> float:
-    """
-    Taux sans risque USD (proxy) : US 13 weeks (^IRX) via Yahoo Finance.
-    Fallback : 5% si l'API ne répond pas.
-    """
-    try:
-        df = yf.download("^IRX", period="5d")
-        last = df["Close"].dropna().iloc[-1]
-        return float(last) / 100.0
-    except Exception:
-        return 0.05  # 5% par défaut pour la démo
-
-
-@st.cache_data(ttl=3600)
-def get_rate_eur() -> float:
-    """
-    Taux sans risque EUR (proxy).
-    Pour la démo on renvoie 3% (taux euro court terme).
-    Dans un moteur réel : EURIBOR / taux BCE / courbe swap EUR.
-    """
-    try:
-        _ = yf.download("EURUSD=X", period="5d")
-    except Exception:
-        pass
-    return 0.03
 
 
 # --------------------------------------------------
@@ -54,15 +22,6 @@ st.write(
     "profil investisseur, allocation d’actifs, mesure du risque, visualisation "
     "de la frontière efficiente et projection de la valeur future du portefeuille. "
     "Le moteur complet d’optimisation reste propriétaire."
-)
-
-# Récupération des taux sans risque
-rate_usd = get_rate_usd()
-rate_eur = get_rate_eur()
-
-st.info(
-    f"Taux sans risque (données démo) — 🇺🇸 USD : {rate_usd:.2%} | 🇪🇺 EUR : {rate_eur:.2%}. "
-    "Ces taux sont utilisés uniquement à titre indicatif pour le calcul du Sharpe."
 )
 
 # --------------------------------------------------
@@ -132,47 +91,16 @@ if st.button("Optimiser le portefeuille (version démo)"):
         )
     )
 
-    # On suppose un investisseur en EUR pour le Sharpe
-    rf = rate_eur
-
-    mu = stats["expected_return"]    # rendement annualisé attendu
-    sigma = stats["volatility"]      # volatilité annualisée
-
-    # Sharpe ratio (démo) ajusté du taux sans risque
-    sharpe = (mu - rf) / (sigma + 1e-9)
-
-    # Horizon en années selon le profil investisseur (Court / Moyen / Long)
-    if horizon == "Court terme":
-        horizon_years = 3
-    elif horizon == "Moyen terme":
-        horizon_years = 5
-    else:
-        horizon_years = 10
-
-    # Gain espéré sur l'horizon investisseur (démo)
-    valeur_future = montant * (1 + mu) ** horizon_years
-    gain_espere = valeur_future - montant
-
-    # ------------------ Metrics principales ------------------
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
-        st.metric("Rendement annualisé (démo)", f"{mu:.1%}")
-        st.metric("Volatilité annualisée (démo)", f"{sigma:.1%}")
+        st.metric("Rendement annualisé (démo)", f"{stats['expected_return']:.1%}")
+        st.metric("Volatilité annualisée (démo)", f"{stats['volatility']:.1%}")
     with col2:
-        st.metric("Sharpe ratio (démo, rf EUR)", f"{sharpe:.2f}")
+        st.metric("Ratio rendement/risque (score interne)", f"{stats['score']:.2f}")
         st.metric("Cash alloué", f"{stats['cash_amount']:,.0f} €")
-    with col3:
-        st.metric(
-            f"Gain espéré sur {horizon_years} ans (démo)",
-            f"{gain_espere:,.0f} €"
-        )
-        st.metric(
-            "Valeur future estimée",
-            f"{valeur_future:,.0f} €"
-        )
 
     # --------------------------------------------------
-    # Projection de la valeur future (démo, horizon libre)
+    # Projection de la valeur future (démo)
     # --------------------------------------------------
     st.subheader("Projection de la valeur future (démo)")
 
@@ -180,9 +108,12 @@ if st.button("Optimiser le portefeuille (version démo)"):
         "Horizon de projection (en années)",
         min_value=1,
         max_value=30,
-        value=horizon_years,
+        value=10,
         help="Projection indicative basée sur le rendement et la volatilité du portefeuille."
     )
+
+    mu = stats["expected_return"]
+    sigma = stats["volatility"]
 
     annees = np.arange(0, horizon_annees + 1)
 
@@ -273,8 +204,8 @@ if st.button("Optimiser le portefeuille (version démo)"):
     # Point du portefeuille proposé par YEMALIN
     fig.add_trace(
         go.Scatter(
-            x=[sigma],
-            y=[mu],
+            x=[stats["volatility"]],
+            y=[stats["expected_return"]],
             mode="markers+text",
             name="Portefeuille proposé",
             marker=dict(size=14, color="#1E88E5"),
@@ -316,7 +247,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
     st.plotly_chart(fig, use_container_width=True)
 
     st.info(
-        "⚠️ La frontière, le Sharpe et la projection sont basés sur une approximation simplifiée "
+        "⚠️ La frontière et la projection sont basées sur une approximation simplifiée "
         "pour la démonstration. Le moteur complet d’optimisation (covariances détaillées, "
         "scénarios de marché, stress tests, etc.) reste propriétaire et peut être présenté "
         "séparément sous NDA."
@@ -325,6 +256,6 @@ if st.button("Optimiser le portefeuille (version démo)"):
 else:
     st.warning(
         "Clique sur **Optimiser le portefeuille (version démo)** pour générer une allocation, "
-        "voir le gain espéré, la projection de la valeur future et positionner le portefeuille sur la "
+        "voir la projection de la valeur future et positionner le portefeuille sur la "
         "frontière efficiente."
     )
