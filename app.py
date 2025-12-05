@@ -1,7 +1,12 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+
 from demo_model import get_universe, optimize_portfolio, compute_efficient_frontier
+
 import plotly.graph_objects as go
+import plotly.express as px
+
 
 # --------------------------------------------------
 # Configuration générale de la page
@@ -14,8 +19,9 @@ st.set_page_config(
 st.title("YEMALIN Robo-Advisor - Démo Investisseur")
 st.write(
     "Cette démo illustre le fonctionnement général du robo-advisor YEMALIN : "
-    "profil investisseur, allocation d’actifs, mesure du risque et visualisation "
-    "de la frontière efficiente. Le moteur complet d’optimisation reste propriétaire."
+    "profil investisseur, allocation d’actifs, mesure du risque, visualisation "
+    "de la frontière efficiente et projection de la valeur future du portefeuille. "
+    "Le moteur complet d’optimisation reste propriétaire."
 )
 
 # --------------------------------------------------
@@ -94,6 +100,73 @@ if st.button("Optimiser le portefeuille (version démo)"):
         st.metric("Cash alloué", f"{stats['cash_amount']:,.0f} €")
 
     # --------------------------------------------------
+    # Projection de la valeur future (démo)
+    # --------------------------------------------------
+    st.subheader("Projection de la valeur future (démo)")
+
+    horizon_annees = st.slider(
+        "Horizon de projection (en années)",
+        min_value=1,
+        max_value=30,
+        value=10,
+        help="Projection indicative basée sur le rendement et la volatilité du portefeuille."
+    )
+
+    mu = stats["expected_return"]
+    sigma = stats["volatility"]
+
+    annees = np.arange(0, horizon_annees + 1)
+
+    # On évite des taux trop négatifs
+    mu_pess = max(mu - sigma, -0.99)
+
+    valeur_centrale = montant * (1 + mu) ** annees
+    valeur_pessimiste = montant * (1 + mu_pess) ** annees
+    valeur_optimiste = montant * (1 + (mu + sigma)) ** annees
+
+    df_proj = pd.DataFrame({
+        "Année": annees,
+        "Scénario pessimiste": valeur_pessimiste,
+        "Scénario central": valeur_centrale,
+        "Scénario optimiste": valeur_optimiste,
+    })
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        st.metric(
+            f"Valeur pessimiste à {horizon_annees} ans",
+            f"{valeur_pessimiste[-1]:,.0f} €"
+        )
+    with col_b:
+        st.metric(
+            f"Valeur centrale à {horizon_annees} ans",
+            f"{valeur_centrale[-1]:,.0f} €"
+        )
+    with col_c:
+        st.metric(
+            f"Valeur optimiste à {horizon_annees} ans",
+            f"{valeur_optimiste[-1]:,.0f} €"
+        )
+
+    df_proj_melt = df_proj.melt(id_vars="Année", var_name="Scénario", value_name="Valeur")
+
+    fig_proj = px.line(
+        df_proj_melt,
+        x="Année",
+        y="Valeur",
+        color="Scénario",
+        title="Projection de la valeur du portefeuille (démo)",
+        labels={"Valeur": "Valeur du portefeuille (€)"}
+    )
+
+    st.plotly_chart(fig_proj, use_container_width=True)
+
+    st.caption(
+        "Cette projection est purement indicative et basée sur une version simplifiée du modèle "
+        "(rendement et volatilité constants). Elle ne constitue pas une garantie de performance."
+    )
+
+    # --------------------------------------------------
     # Frontière efficiente (version démo, visualisation pro)
     # --------------------------------------------------
     st.subheader("Frontière efficiente (démo)")
@@ -117,7 +190,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
         )
     )
 
-    # Zone ombrée sous la frontière (effet premium)
+    # Zone ombrée sous la frontière
     fig.add_trace(
         go.Scatter(
             x=frontier["Volatilite_portefeuille"],
@@ -143,51 +216,3 @@ if st.button("Optimiser le portefeuille (version démo)"):
             textposition="top center",
             hovertemplate=(
                 "<b>Portefeuille YEMALIN</b><br>"
-                "Volatilité : %{x:.2%}<br>"
-                "Rendement espéré : %{y:.2%}<extra></extra>"
-            ),
-        )
-    )
-
-    # Mise en forme du graphique
-    fig.update_layout(
-        template="plotly_white",
-        title="Frontière efficiente (rendement vs risque)",
-        title_font=dict(size=20),
-        xaxis=dict(
-            title="Volatilité du portefeuille (σ)",
-            showgrid=True,
-            gridcolor="lightgray",
-            tickformat=".0%",
-        ),
-        yaxis=dict(
-            title="Rendement espéré du portefeuille (µ)",
-            showgrid=True,
-            gridcolor="lightgray",
-            tickformat=".0%",
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0.0,
-        ),
-        margin=dict(l=40, r=40, t=60, b=40),
-        hovermode="closest",
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.info(
-        "⚠️ Cette visualisation est basée sur une approximation simplifiée de la frontière "
-        "efficiente pour la démo. Le moteur complet d’optimisation (matrices de covariance, "
-        "scénarios de marché, stress tests, etc.) reste propriétaire et peut être présenté "
-        "séparément sous NDA."
-    )
-
-else:
-    st.warning(
-        "Clique sur **Optimiser le portefeuille (version démo)** pour générer une allocation "
-        "et la positionner sur la frontière efficiente."
-    )
