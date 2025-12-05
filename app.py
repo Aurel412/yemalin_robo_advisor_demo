@@ -1,16 +1,19 @@
-
 import streamlit as st
 import pandas as pd
-from demo_model import get_universe, optimize_portfolio
+from demo_model import get_universe, optimize_portfolio, compute_efficient_frontier
+import plotly.express as px
 
 st.set_page_config(page_title="YEMALIN Robo-Advisor - Demo", layout="wide")
 
-st.title("YEMALIN Robo-Advisor - Demo Investisseur")
+st.title("YEMALIN Robo-Advisor - Démo Investisseur")
 st.write(
     "Cette démo permet de tester le fonctionnement général du robo-advisor "
     "sans exposer les détails complets du modèle propriétaire."
 )
 
+# -------------------------
+# Barre latérale : profil
+# -------------------------
 st.sidebar.header("Profil investisseur")
 horizon = st.sidebar.selectbox("Horizon d'investissement", ["Court terme", "Moyen terme", "Long terme"])
 risque = st.sidebar.slider("Tolérance au risque (1 = prudent, 5 = agressif)", 1, 5, 3)
@@ -20,10 +23,16 @@ st.sidebar.header("Contraintes simples")
 liquidite_min = st.sidebar.slider("Pourcentage minimum en liquidités", 0, 50, 10)
 nb_max_actifs = st.sidebar.slider("Nombre maximum d'actifs en portefeuille", 3, 10, 6)
 
+# -------------------------
+# Univers
+# -------------------------
 st.header("Univers d'investissement (exemple)")
 universe = get_universe()
 st.dataframe(universe)
 
+# -------------------------
+# Optimisation + affichage
+# -------------------------
 if st.button("Optimiser le portefeuille (version démo)"):
     with st.spinner("Calcul en cours..."):
         alloc, stats = optimize_portfolio(
@@ -45,6 +54,34 @@ if st.button("Optimiser le portefeuille (version démo)"):
     with col2:
         st.metric("Ratio rendement/risque (score interne)", f"{stats['score']:.2f}")
         st.metric("Cash alloué", f"{stats['cash_amount']:,.0f} €")
+
+    # -------------------------
+    # Frontière efficiente
+    # -------------------------
+    st.subheader("Frontière efficiente (démo)")
+
+    frontier = compute_efficient_frontier(universe)
+
+    fig = px.line(
+        frontier,
+        x="Volatilite_portefeuille",
+        y="Rendement_portefeuille",
+        title="Frontière efficiente (démo)",
+        labels={
+            "Volatilite_portefeuille": "Volatilité du portefeuille",
+            "Rendement_portefeuille": "Rendement espéré du portefeuille",
+        },
+    )
+
+    # Point du portefeuille proposé
+    fig.add_scatter(
+        x=[stats["volatility"]],
+        y=[stats["expected_return"]],
+        mode="markers",
+        name="Portefeuille proposé",
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
     st.info(
         "⚠️ Cette version est une approximation simplifiée à des fins de démonstration. "
