@@ -13,7 +13,7 @@ import plotly.express as px
 # Fonctions pour récupérer les taux sans risque
 # --------------------------------------------------
 @st.cache_data(ttl=3600)
-def get_rate_usd():
+def get_rate_usd() -> float:
     """
     Taux sans risque USD (proxy) : US 13 weeks (^IRX) via Yahoo Finance.
     Fallback : 5% si l'API ne répond pas.
@@ -27,19 +27,19 @@ def get_rate_usd():
 
 
 @st.cache_data(ttl=3600)
-def get_rate_eur():
+def get_rate_eur() -> float:
     """
-    Taux sans risque EUR (proxy). Pour la démo, on utilise un taux fixe
-    si l'API ne renvoie rien de pertinent.
-    Dans un modèle réel : EURIBOR / taux BCE / courbe swap EUR.
+    Taux sans risque EUR (proxy).
+    Pour la démo on renvoie 3% (taux euro court terme).
+    Dans un moteur réel : EURIBOR / taux BCE / courbe swap EUR.
     """
     try:
-        # Ici on n'a pas de vrai taux risk-free via yfinance,
-        # donc on renvoie un taux fixe pour la démo.
-        df = yf.download("EURUSD=X", period="5d")
-        return 0.03
+        # On appelle quand même yfinance pour montrer l'idée,
+        # mais on ne se sert pas du résultat pour le taux.
+        _ = yf.download("EURUSD=X", period="5d")
     except Exception:
-        return 0.03  # 3% par défaut pour la démo
+        pass
+    return 0.03
 
 
 # --------------------------------------------------
@@ -134,14 +134,14 @@ if st.button("Optimiser le portefeuille (version démo)"):
         )
     )
 
-    # Choix du taux sans risque pour le Sharpe : on suppose un investisseur en EUR
+    # On suppose un investisseur en EUR pour le Sharpe
     rf = rate_eur
 
-    mu = stats["expected_return"]
-    sigma = stats["volatility"]
+    mu = stats["expected_return"]    # rendement annualisé attendu
+    sigma = stats["volatility"]      # volatilité annualisée
 
     # Sharpe ratio (démo) ajusté du taux sans risque
-    sharpe = (mu - rf) / (sigma + 1e-6)
+    sharpe = (mu - rf) / (sigma + 1e-9)
 
     # Horizon en années selon le profil investisseur (Court / Moyen / Long)
     if horizon == "Court terme":
@@ -169,7 +169,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
             f"{gain_espere:,.0f} €"
         )
         st.metric(
-            f"Valeur future estimée",
+            "Valeur future estimée",
             f"{valeur_future:,.0f} €"
         )
 
@@ -182,7 +182,6 @@ if st.button("Optimiser le portefeuille (version démo)"):
     data_sharpe = []
 
     for r in profils:
-        # On recalcule une allocation pour chaque niveau de risque r
         alloc_r, stats_r = optimize_portfolio(
             universe,
             montant=montant,
@@ -193,7 +192,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
         )
         mu_r = stats_r["expected_return"]
         sigma_r = stats_r["volatility"]
-        sharpe_r = (mu_r - rf) / (sigma_r + 1e-6)
+        sharpe_r = (mu_r - rf) / (sigma_r + 1e-9)
 
         data_sharpe.append({
             "Profil de risque": r,
@@ -215,7 +214,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
         },
     )
 
-    st.plotly_chart(fig_sharpe, use_container_width=True)
+    st.plotly_chart(fig_sharpe, use_container_width=True, key="sharpe_chart")
 
     # --------------------------------------------------
     # Projection de la valeur future (démo, horizon libre)
@@ -274,7 +273,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
         labels={"Valeur": "Valeur du portefeuille (€)"}
     )
 
-    st.plotly_chart(fig_proj, use_container_width=True)
+    st.plotly_chart(fig_proj, use_container_width=True, key="projection_chart")
 
     st.caption(
         "Cette projection est purement indicative et basée sur une version simplifiée du modèle "
@@ -359,7 +358,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
         hovermode="closest",
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="frontier_chart")
 
     st.info(
         "⚠️ La frontière, le Sharpe et la projection sont basés sur une approximation simplifiée "
