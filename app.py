@@ -34,8 +34,6 @@ def get_rate_eur() -> float:
     Dans un moteur réel : EURIBOR / taux BCE / courbe swap EUR.
     """
     try:
-        # On appelle quand même yfinance pour montrer l'idée,
-        # mais on ne se sert pas du résultat pour le taux.
         _ = yf.download("EURUSD=X", period="5d")
     except Exception:
         pass
@@ -174,49 +172,6 @@ if st.button("Optimiser le portefeuille (version démo)"):
         )
 
     # --------------------------------------------------
-    # Sharpe dynamique par profil de risque (1 à 5)
-    # --------------------------------------------------
-    st.subheader("Sharpe ratio par profil de risque (démo)")
-
-    profils = [1, 2, 3, 4, 5]
-    data_sharpe = []
-
-    for r in profils:
-        alloc_r, stats_r = optimize_portfolio(
-            universe,
-            montant=montant,
-            risque=r,
-            liquidite_min=liquidite_min / 100.0,
-            nb_max_actifs=nb_max_actifs,
-            horizon=horizon,
-        )
-        mu_r = stats_r["expected_return"]
-        sigma_r = stats_r["volatility"]
-        sharpe_r = (mu_r - rf) / (sigma_r + 1e-9)
-
-        data_sharpe.append({
-            "Profil de risque": r,
-            "Sharpe": sharpe_r,
-            "Rendement": mu_r,
-            "Volatilité": sigma_r,
-        })
-
-    df_sharpe = pd.DataFrame(data_sharpe)
-
-    fig_sharpe = px.bar(
-        df_sharpe,
-        x="Profil de risque",
-        y="Sharpe",
-        title="Sharpe ratio par profil (démo)",
-        labels={
-            "Sharpe": "Sharpe ratio (rf EUR)",
-            "Profil de risque": "Niveau de risque",
-        },
-    )
-
-    st.plotly_chart(fig_sharpe, use_container_width=True, key="sharpe_chart")
-
-    # --------------------------------------------------
     # Projection de la valeur future (démo, horizon libre)
     # --------------------------------------------------
     st.subheader("Projection de la valeur future (démo)")
@@ -273,7 +228,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
         labels={"Valeur": "Valeur du portefeuille (€)"}
     )
 
-    st.plotly_chart(fig_proj, use_container_width=True, key="projection_chart")
+    st.plotly_chart(fig_proj, use_container_width=True)
 
     st.caption(
         "Cette projection est purement indicative et basée sur une version simplifiée du modèle "
@@ -358,7 +313,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
         hovermode="closest",
     )
 
-    st.plotly_chart(fig, use_container_width=True, key="frontier_chart")
+    st.plotly_chart(fig, use_container_width=True)
 
     st.info(
         "⚠️ La frontière, le Sharpe et la projection sont basés sur une approximation simplifiée "
