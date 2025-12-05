@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 
 from demo_model import get_universe, optimize_portfolio, compute_efficient_frontier
-
-import plotly.graph_objects as go
-import plotly.express as px
 
 
 # --------------------------------------------------
@@ -91,16 +90,44 @@ if st.button("Optimiser le portefeuille (version démo)"):
         )
     )
 
-    col1, col2 = st.columns(2)
+    # Rendement, volatilité, ratio rendement/risque simple
+    mu = stats["expected_return"]    # rendement annualisé attendu
+    sigma = stats["volatility"]      # volatilité annualisée
+    ratio_rr = mu / (sigma + 1e-9)   # ratio rendement / risque (interne)
+    cash_amount = stats.get("cash_amount", 0.0)
+
+    # Horizon en années selon le profil investisseur (Court / Moyen / Long)
+    if horizon == "Court terme":
+        horizon_years = 3
+    elif horizon == "Moyen terme":
+        horizon_years = 5
+    else:
+        horizon_years = 10
+
+    # Gain espéré sur l'horizon investisseur (démo)
+    valeur_future = montant * (1 + mu) ** horizon_years
+    gain_espere = valeur_future - montant
+
+    # ------------------ Metrics principales ------------------
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Rendement annualisé (démo)", f"{stats['expected_return']:.1%}")
-        st.metric("Volatilité annualisée (démo)", f"{stats['volatility']:.1%}")
+        st.metric("Rendement annualisé (démo)", f"{mu:.1%}")
+        st.metric("Volatilité annualisée (démo)", f"{sigma:.1%}")
     with col2:
-        st.metric("Ratio rendement/risque (score interne)", f"{stats['score']:.2f}")
-        st.metric("Cash alloué", f"{stats['cash_amount']:,.0f} €")
+        st.metric("Ratio rendement/risque (score interne)", f"{ratio_rr:.2f}")
+        st.metric("Cash alloué", f"{cash_amount:,.0f} €")
+    with col3:
+        st.metric(
+            f"Gain espéré sur {horizon_years} ans (démo)",
+            f"{gain_espere:,.0f} €"
+        )
+        st.metric(
+            "Valeur future estimée",
+            f"{valeur_future:,.0f} €"
+        )
 
     # --------------------------------------------------
-    # Projection de la valeur future (démo)
+    # Projection de la valeur future (démo, horizon libre)
     # --------------------------------------------------
     st.subheader("Projection de la valeur future (démo)")
 
@@ -108,12 +135,9 @@ if st.button("Optimiser le portefeuille (version démo)"):
         "Horizon de projection (en années)",
         min_value=1,
         max_value=30,
-        value=10,
+        value=horizon_years,
         help="Projection indicative basée sur le rendement et la volatilité du portefeuille."
     )
-
-    mu = stats["expected_return"]
-    sigma = stats["volatility"]
 
     annees = np.arange(0, horizon_annees + 1)
 
@@ -204,8 +228,8 @@ if st.button("Optimiser le portefeuille (version démo)"):
     # Point du portefeuille proposé par YEMALIN
     fig.add_trace(
         go.Scatter(
-            x=[stats["volatility"]],
-            y=[stats["expected_return"]],
+            x=[sigma],
+            y=[mu],
             mode="markers+text",
             name="Portefeuille proposé",
             marker=dict(size=14, color="#1E88E5"),
@@ -224,14 +248,12 @@ if st.button("Optimiser le portefeuille (version démo)"):
             showgrid=True,
             gridcolor="lightgray",
             tickformat=".1%",
-            range=[0, 0.25],
         ),
         yaxis=dict(
             title="Rendement espéré du portefeuille (µ)",
             showgrid=True,
             gridcolor="lightgray",
             tickformat=".1%",
-            range=[0, 0.10],
         ),
         legend=dict(
             orientation="h",
@@ -256,6 +278,6 @@ if st.button("Optimiser le portefeuille (version démo)"):
 else:
     st.warning(
         "Clique sur **Optimiser le portefeuille (version démo)** pour générer une allocation, "
-        "voir la projection de la valeur future et positionner le portefeuille sur la "
+        "voir le gain espéré, la projection de la valeur future et positionner le portefeuille sur la "
         "frontière efficiente."
     )
