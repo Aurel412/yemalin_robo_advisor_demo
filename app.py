@@ -183,10 +183,7 @@ if st.button("Optimiser le portefeuille (version démo)"):
             mode="lines",
             name="Frontière efficiente",
             line=dict(color="#4CAF50", width=3),
-            hovertemplate=(
-                "Volatilité : %{x:.2%}<br>"
-                "Rendement espéré : %{y:.2%}<extra></extra>"
-            ),
+            hovertemplate="Volatilité : %{x:.2%}<br>Rendement espéré : %{y:.2%}<extra></extra>",
         )
     )
 
@@ -214,5 +211,51 @@ if st.button("Optimiser le portefeuille (version démo)"):
             marker=dict(size=14, color="#1E88E5"),
             text=["Portefeuille YEMALIN"],
             textposition="top center",
-            hovertemplate=(
-                "<b>Portefeuille YEMALIN</b><br>"
+            hovertemplate="<b>Portefeuille YEMALIN</b><br>Volatilité : %{x:.2%}<br>Rendement espéré : %{y:.2%}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        template="plotly_white",
+        title="Frontière efficiente (rendement vs risque)",
+        title_font=dict(size=20),
+        xaxis=dict(
+            title="Volatilité du portefeuille (σ)",
+            showgrid=True,
+            gridcolor="lightgray",
+            tickformat=".1%",
+            range=[0, 0.25],
+        ),
+        yaxis=dict(
+            title="Rendement espéré du portefeuille (µ)",
+            showgrid=True,
+            gridcolor="lightgray",
+            tickformat=".1%",
+            range=[0, 0.10],
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0.0,
+        ),
+        margin=dict(l=40, r=40, t=60, b=40),
+        hovermode="closest",
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.info(
+        "⚠️ La frontière et la projection sont basées sur une approximation simplifiée "
+        "pour la démonstration. Le moteur complet d’optimisation (covariances détaillées, "
+        "scénarios de marché, stress tests, etc.) reste propriétaire et peut être présenté "
+        "séparément sous NDA."
+    )
+
+else:
+    st.warning(
+        "Clique sur **Optimiser le portefeuille (version démo)** pour générer une allocation, "
+        "voir la projection de la valeur future et positionner le portefeuille sur la "
+        "frontière efficiente."
+    )
