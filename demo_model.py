@@ -1,6 +1,6 @@
+
 import pandas as pd
 import numpy as np
-
 
 def get_universe() -> pd.DataFrame:
     data = [
@@ -30,10 +30,6 @@ def optimize_portfolio(universe: pd.DataFrame,
                        liquidite_min: float,
                        nb_max_actifs: int,
                        horizon: str):
-    """
-    Allocation démo : score = rendement - lambda * volatilité^2,
-    puis normalisation des scores positifs.
-    """
     lam = _risk_aversion_from_profile(risque, horizon)
 
     risky = universe[universe["Classe"] != "Monétaire"].copy()
@@ -62,10 +58,16 @@ def optimize_portfolio(universe: pd.DataFrame,
     alloc = pd.concat([alloc_risky, alloc_cash], ignore_index=True)
     alloc["Montant (€)"] = alloc["Poids"] * montant
 
-    merged = alloc.merge(universe, on=["Ticker", "Classe"])
-
-    expected_return = float((merged["Poids"] * merged["Rendement_attendu"]).sum())
-    volatility = float((merged["Poids"] * merged["Volatilite"]).sum())
+    expected_return = float(
+        (alloc.merge(universe, on=["Ticker", "Classe"])[["Poids", "Rendement_attendu"]]
+         .prod(axis=1)
+         .sum())
+    )
+    volatility = float(
+        (alloc.merge(universe, on=["Ticker", "Classe"])[["Poids", "Volatilite"]]
+         .prod(axis=1)
+         .sum())
+    )
 
     score = expected_return / (volatility + 1e-6)
 
@@ -76,55 +78,3 @@ def optimize_portfolio(universe: pd.DataFrame,
         "cash_amount": float(alloc[alloc["Classe"] == "Monétaire"]["Montant (€)"].sum()),
     }
     return alloc, stats
-
-
-def compute_efficient_frontier(universe: pd.DataFrame,
-                               n_points: int = 25,
-                               liquidite_min: float = 0.10,
-                               nb_max_actifs: int = 5) -> pd.DataFrame:
-    """
-    Frontière efficiente démo :
-    on fait varier un paramètre de risque (lambda) et on
-    reconstruit une allocation simplifiée pour chaque valeur.
-    """
-    risky = universe[universe["Classe"] != "Monétaire"].copy()
-    money_row = universe[universe["Classe"] == "Monétaire"].iloc[0]
-
-    lam_values = np.linspace(0.5, 8.0, n_points)
-    results = []
-
-    for lam in lam_values:
-        tmp = risky.copy()
-        tmp["score"] = tmp["Rendement_attendu"] - lam * tmp["Volatilite"] ** 2
-        tmp = tmp.sort_values("score", ascending=False).head(nb_max_actifs)
-
-        w = np.maximum(tmp["score"], 0)
-        if w.sum() == 0:
-            w = np.ones(len(tmp))
-        w = w / w.sum()
-
-        total_risky_weight = 1.0 - liquidite_min
-        tmp["Poids"] = w * total_risky_weight
-
-        alloc_cash_weight = liquidite_min
-
-        alloc_all = pd.concat([
-            tmp[["Ticker", "Classe", "Poids"]],
-            pd.DataFrame([{
-                "Ticker": money_row["Ticker"],
-                "Classe": money_row["Classe"],
-                "Poids": alloc_cash_weight,
-            }])
-        ], ignore_index=True)
-
-        merged = alloc_all.merge(universe, on=["Ticker", "Classe"])
-
-        port_return = float((merged["Poids"] * merged["Rendement_attendu"]).sum())
-        port_vol = float((merged["Poids"] * merged["Volatilite"]).sum())
-
-        results.append({
-            "Rendement_portefeuille": port_return,
-            "Volatilite_portefeuille": port_vol,
-        })
-
-    return pd.DataFrame(results)
