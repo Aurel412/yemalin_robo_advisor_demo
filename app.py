@@ -25,7 +25,6 @@ risque = st.sidebar.slider(
     max_value=5,
     value=3,
 )
-
 montant = st.sidebar.number_input(
     "Montant à investir (€)",
     min_value=1000.0,
@@ -41,7 +40,6 @@ liquidite_min = st.sidebar.slider(
     max_value=50,
     value=10,
 )
-
 nb_max_actifs = st.sidebar.slider(
     "Nombre maximum d'actifs en portefeuille",
     min_value=3,
@@ -53,13 +51,6 @@ nb_max_actifs = st.sidebar.slider(
 st.header("Univers d'investissement (exemple)")
 universe = get_universe()
 st.dataframe(universe)
-
-# Mapping horizon -> nombre d'années pour la projection
-YEARS_MAP = {
-    "Court terme": 1,
-    "Moyen terme": 3,
-    "Long terme": 8,
-}
 
 if st.button("Optimiser le portefeuille (version démo)"):
     with st.spinner("Calcul en cours..."):
@@ -87,46 +78,82 @@ if st.button("Optimiser le portefeuille (version démo)"):
         st.metric("Ratio rendement/risque (score interne)", f"{stats['score']:.2f}")
         st.metric("Cash alloué", f"{stats['cash_amount']:,.0f} €")
 
-    # ------------------ PROJECTION VALEUR FUTURE ------------------
-    st.subheader("Projection de la valeur future du portefeuille (démonstration)")
+    # ==========================================================
+    #   PROJECTION DE LA VALEUR FUTURE - 3 SCÉNARIOS
+    # ==========================================================
+    st.subheader("Projection de la valeur future (démo)")
 
-    r = stats["expected_return"]
-    n_years = YEARS_MAP[horizon]
-
-    # Valeur future avec hypothèse de rendement constant
-    valeur_future = montant * (1 + r) ** n_years
-    gain_total = valeur_future - montant
-
-    st.write(
-        f"- Horizon considéré : **{horizon}** (≈ {n_years} ans)\n"
-        f"- Rendement annuel estimé du portefeuille : **{r:.1%}**\n"
-        f"- Valeur future projetée : **{valeur_future:,.0f} €**\n"
-        f"- Gain cumulé estimé sur la période : **{gain_total:,.0f} €**\n\n"
-        "_Ces chiffres sont purement illustratifs et ne constituent pas une garantie de performance._"
+    horizon_proj = st.slider(
+        "Horizon de projection (en années)",
+        min_value=1,
+        max_value=30,
+        value=10,
     )
 
-    # Petite courbe de croissance dans le temps
-    annees = np.arange(0, n_years + 1)
-    valeurs = montant * (1 + r) ** annees
-    df_proj = pd.DataFrame({"Année": annees, "Valeur_portefeuille": valeurs})
+    r_central = stats["expected_return"]
+    vol = stats["volatility"]
+
+    # Scénarios simplifiés : pessimiste / central / optimiste
+    r_pess = r_central - vol
+    r_opt = r_central + vol
+
+    years = np.arange(0, horizon_proj + 1)
+
+    valeurs_pess = montant * (1 + r_pess) ** years
+    valeurs_centr = montant * (1 + r_central) ** years
+    valeurs_opt = montant * (1 + r_opt) ** years
+
+    val_pess_T = valeurs_pess[-1]
+    val_centr_T = valeurs_centr[-1]
+    val_opt_T = valeurs_opt[-1]
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric(f"Valeur pessimiste à {horizon_proj} ans", f"{val_pess_T:,.0f} €")
+    with c2:
+        st.metric(f"Valeur centrale à {horizon_proj} ans", f"{val_centr_T:,.0f} €")
+    with c3:
+        st.metric(f"Valeur optimiste à {horizon_proj} ans", f"{val_opt_T:,.0f} €")
+
+    st.markdown("**Projection de la valeur du portefeuille (démo)**")
+
+    df_proj = pd.DataFrame(
+        {
+            "Année": years,
+            "Scénario pessimiste": valeurs_pess,
+            "Scénario central": valeurs_centr,
+            "Scénario optimiste": valeurs_opt,
+        }
+    )
+
+    df_proj_long = df_proj.melt(
+        id_vars="Année",
+        var_name="Scénario",
+        value_name="Valeur",
+    )
 
     chart_proj = (
-        alt.Chart(df_proj)
+        alt.Chart(df_proj_long)
         .mark_line(point=True)
         .encode(
             x=alt.X("Année:Q", title="Année"),
-            y=alt.Y("Valeur_portefeuille:Q", title="Valeur du portefeuille (€)"),
-            tooltip=["Année", alt.Tooltip("Valeur_portefeuille:Q", format=",.0f")],
-            color=alt.value("#1f77b4"),
+            y=alt.Y("Valeur:Q", title="Valeur du portefeuille (€)"),
+            color=alt.Color("Scénario:N", title="Scénario"),
+            tooltip=[
+                alt.Tooltip("Année:Q", title="Année"),
+                alt.Tooltip("Scénario:N", title="Scénario"),
+                alt.Tooltip("Valeur:Q", title="Valeur", format=",.0f"),
+            ],
         )
-        .properties(height=300)
+        .properties(height=350)
     )
     st.altair_chart(chart_proj, use_container_width=True)
 
-    # ------------------ FRONTIÈRE EFFICIENTE (DÉMO) ------------------
+    # ==========================================================
+    #   FRONTIÈRE EFFICIENTE (VERSION DÉMO COLORÉE)
+    # ==========================================================
     st.subheader("Frontière efficiente (version démo simplifiée)")
 
-    # On fait tourner le modèle pour différents niveaux de risque (1 à 5)
     points = []
     for r_level in range(1, 6):
         _, s_tmp = optimize_portfolio(
@@ -142,25 +169,24 @@ if st.button("Optimiser le portefeuille (version démo)"):
                 "Profil_risque": r_level,
                 "Volatilité": s_tmp["volatility"],
                 "Rendement": s_tmp["expected_return"],
-                "Actuel": "Profil sélectionné" if r_level == risque else "Autres profils",
+                "Actuel": "Profil sélectionné" if r_level == risque else "Autre niveau",
             }
         )
 
     df_frontier = pd.DataFrame(points)
 
-    # Graphique en couleurs – chaque point correspond à un profil de risque
-    chart_frontier = (
+    chart_points = (
         alt.Chart(df_frontier)
-        .mark_circle(size=120)
+        .mark_circle()
         .encode(
             x=alt.X("Volatilité:Q", title="Volatilité annualisée"),
             y=alt.Y("Rendement:Q", title="Rendement annualisé"),
-            color=alt.Color(
-                "Profil_risque:O",
-                title="Niveau de risque",
-                scale=alt.Scale(scheme="category10"),
+            color=alt.Color("Profil_risque:O", title="Niveau de risque"),
+            size=alt.Size(
+                "Actuel:N",
+                title="Portefeuille",
+                scale=alt.Scale(range=[80, 200]),
             ),
-            shape=alt.Shape("Actuel:N", title="Statut"),
             tooltip=[
                 alt.Tooltip("Profil_risque:O", title="Profil de risque"),
                 alt.Tooltip("Rendement:Q", title="Rendement", format=".1%"),
@@ -168,26 +194,23 @@ if st.button("Optimiser le portefeuille (version démo)"):
                 "Actuel",
             ],
         )
-        .properties(height=350)
     )
 
-    # On relie les points pour visualiser la "frontière" (courbe)
-    line_frontier = (
-        alt.Chart(df_frontier)
+    chart_line = (
+        alt.Chart(df_frontier.sort_values("Volatilité"))
         .mark_line(strokeWidth=2)
         .encode(
             x="Volatilité:Q",
             y="Rendement:Q",
-            color=alt.value("lightgray"),
+            color=alt.value("#999999"),
         )
     )
 
-    st.altair_chart(line_frontier + chart_frontier, use_container_width=True)
+    st.altair_chart(chart_line + chart_points, use_container_width=True)
 
     st.info(
         "⚠️ Cette version est une approximation simplifiée à des fins de démonstration. "
         "Le moteur complet d'optimisation reste propriétaire."
     )
-
 else:
     st.warning("Clique sur **Optimiser le portefeuille** pour générer une proposition d'allocation.")
