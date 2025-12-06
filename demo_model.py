@@ -30,6 +30,10 @@ def optimize_portfolio(universe: pd.DataFrame,
                        liquidite_min: float,
                        nb_max_actifs: int,
                        horizon: str):
+    """
+    Allocation démo : score = rendement - lambda * volatilité^2,
+    puis normalisation des scores positifs.
+    """
     lam = _risk_aversion_from_profile(risque, horizon)
 
     risky = universe[universe["Classe"] != "Monétaire"].copy()
@@ -59,6 +63,7 @@ def optimize_portfolio(universe: pd.DataFrame,
     alloc["Montant (€)"] = alloc["Poids"] * montant
 
     merged = alloc.merge(universe, on=["Ticker", "Classe"])
+
     expected_return = float((merged["Poids"] * merged["Rendement_attendu"]).sum())
     volatility = float((merged["Poids"] * merged["Volatilite"]).sum())
 
@@ -73,51 +78,53 @@ def optimize_portfolio(universe: pd.DataFrame,
     return alloc, stats
 
 
-def compute_efficient_frontier(universe: pd.DataFrame, n_points: int = 30) -> pd.DataFrame:
+def compute_efficient_frontier(universe: pd.DataFrame,
+                               n_points: int = 25,
+                               liquidite_min: float = 0.10,
+                               nb_max_actifs: int = 5) -> pd.DataFrame:
     """
-    Calcule une frontière efficiente DÉMO à partir des rendements/volatilités des actifs.
-    On suppose une corrélation moyenne entre les actifs risqués.
-    Résultat : DataFrame avec (Volatilite_portefeuille, Rendement_portefeuille).
+    Frontière efficiente démo :
+    on fait varier un paramètre de risque (lambda) et on
+    reconstruit une allocation simplifiée pour chaque valeur.
     """
-    risky = universe.copy().reset_index(drop=True)
-
-    mu = risky["Rendement_attendu"].values  # rendements attendus
-    sigma = risky["Volatilite"].values      # volatilités
-    n = len(mu)
-
-    # Matrice de corrélation simplifiée (démo) :
-    rho = 0.2  # corrélation moyenne entre les actifs
-    corr = np.full((n, n), rho)
-    np.fill_diagonal(corr, 1.0)
-
-    # Matrice de covariance : Σ = D * Corr * D
-    cov = np.outer(sigma, sigma) * corr
+    risky = universe[universe["Classe"] != "Monétaire"].copy()
+    money_row = universe[universe["Classe"] == "Monétaire"].iloc[0]
 
     lam_values = np.linspace(0.5, 8.0, n_points)
     results = []
 
     for lam in lam_values:
-        # Solution analytique démo : w ∝ Σ^{-1} μ / λ
-        try:
-            w_raw = np.linalg.solve(cov, mu / lam)
-        except np.linalg.LinAlgError:
-            continue
+        tmp = risky.copy()
+        tmp["score"] = tmp["Rendement_attendu"] - lam * tmp["Volatilite"] ** 2
+        tmp = tmp.sort_values("score", ascending=False).head(nb_max_actifs)
 
-        # Pas de ventes à découvert dans la démo
-        w_raw = np.maximum(w_raw, 0.0)
+        w = np.maximum(tmp["score"], 0)
+        if w.sum() == 0:
+            w = np.ones(len(tmp))
+        w = w / w.sum()
 
-        if w_raw.sum() == 0:
-            w = np.ones(n) / n
-        else:
-            w = w_raw / w_raw.sum()
+        total_risky_weight = 1.0 - liquidite_min
+        tmp["Poids"] = w * total_risky_weight
 
-        ret = float(np.dot(w, mu))
-        vol = float(np.sqrt(w @ cov @ w))
+        alloc_cash_weight = liquidite_min
+
+        alloc_all = pd.concat([
+            tmp[["Ticker", "Classe", "Poids"]],
+            pd.DataFrame([{
+                "Ticker": money_row["Ticker"],
+                "Classe": money_row["Classe"],
+                "Poids": alloc_cash_weight,
+            }])
+        ], ignore_index=True)
+
+        merged = alloc_all.merge(universe, on=["Ticker", "Classe"])
+
+        port_return = float((merged["Poids"] * merged["Rendement_attendu"]).sum())
+        port_vol = float((merged["Poids"] * merged["Volatilite"]).sum())
 
         results.append({
-            "Rendement_portefeuille": ret,
-            "Volatilite_portefeuille": vol,
+            "Rendement_portefeuille": port_return,
+            "Volatilite_portefeuille": port_vol,
         })
 
-    frontier = pd.DataFrame(results).sort_values("Volatilite_portefeuille")
-    return frontier
+    return pd.DataFrame(results)
